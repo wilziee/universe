@@ -405,53 +405,64 @@ function animate() {
     }
 }
 
-// --- 9. FIX: SMART LOADING SEQUENCE UNTUK MOBILE ---
-window.onload = () => {
+// --- 9. FIX: SMART LOADING SEQUENCE UNTUK MOBILE (REVISI FINAL) ---
+
+// Menggunakan DOMContentLoaded agar script langsung jalan 
+// TANPA perlu menunggu file <audio> di HTML yang sering diblokir HP
+document.addEventListener("DOMContentLoaded", () => {
     let isAppStarted = false;
 
-    // Fungsi Utama: Menghentikan loader dan memastikan canvas/UI tampil
+    // 1. TIMEOUT MAKSIMAL 5 DETIK (Dijalankan langsung sejak detik pertama!)
+    const fallbackTimer = setTimeout(() => {
+        console.warn("⏳ Timeout 5 detik tercapai! Memaksa aplikasi jalan...");
+        const progBar = document.querySelector('.progress');
+        if (progBar) progBar.style.backgroundColor = '#ff0000'; // Beri indikator merah pada progress bar
+        startApp();
+    }, 5000);
+
+    // Fungsi Utama Eksekusi Aplikasi
     function startApp() {
         if (isAppStarted) return;
         isAppStarted = true;
+        clearTimeout(fallbackTimer); // Matikan timer 5 detik jika sudah jalan duluan
 
         const loader = document.getElementById('loader');
         if (loader) {
             loader.style.opacity = '0';
             setTimeout(() => {
-                // Sembunyikan elemen loader sepenuhnya
                 loader.style.display = 'none';
-                
-                // Tampilkan layer UI dan render Planet
                 const uiLayer = document.getElementById('ui-layer');
                 if (uiLayer) uiLayer.classList.remove('hidden');
 
                 if(bgm) {
                     bgm.volume = 0.3;
-                    bgm.play().catch(() => console.warn("Menunggu interaksi awal untuk audio."));
+                    // Coba jalankan audio perlahan dan abaikan paksa jika diblokir HP
+                    bgm.play().catch(() => console.warn("Menunggu klik user untuk memutar audio."));
                 }
 
-                buildPlanet('earth'); 
-                currentPlanetGroup.scale.set(0.01, 0.01, 0.01);
-                
-                if(typeof gsap !== 'undefined') {
-                    gsap.to(currentPlanetGroup.scale, { x: 1, y: 1, z: 1, duration: 2, ease: "power3.out" });
+                try {
+                    buildPlanet('earth'); 
+                    currentPlanetGroup.scale.set(0.01, 0.01, 0.01);
+                    
+                    if(typeof gsap !== 'undefined') {
+                        gsap.to(currentPlanetGroup.scale, { x: 1, y: 1, z: 1, duration: 2, ease: "power3.out" });
+                    }
+                    
+                    // Mulai Render Loop
+                    animate();
+                } catch (error) {
+                    console.error("Gagal membangun Planet ThreeJS:", error);
                 }
-                
-                // Mulai Render Loop
-                animate();
             }, 500);
         }
     }
 
-    // 1. TIMEOUT MAKSIMAL 5 DETIK (Fail-safe Mechanism)
-    const fallbackTimer = setTimeout(() => {
-        console.error("⏳ Timeout 5 detik tercapai! Memaksa aplikasi untuk merender...");
-        const progBar = document.querySelector('.progress');
-        if (progBar) progBar.style.backgroundColor = 'red'; // Indikator timeout
-        startApp();
-    }, 5000);
+    // Pastikan Library Three.js sudah tersedia sebelum dipanggil
+    if (typeof THREE === 'undefined') {
+        console.error("Library THREE.js gagal diunduh dari CDN!");
+        return; 
+    }
 
-    // 2. Persiapkan Asset Bumi (Earth) sebagai prioritas loading pertama
     const earthData = planetsData.earth;
     const initialUrls = [
         earthData.map, 
@@ -459,44 +470,32 @@ window.onload = () => {
         earthData.specular, 
         earthData.clouds, 
         earthData.nightMap
-    ].filter(Boolean); // Hanya ambil url yang terdefinisi
+    ].filter(Boolean);
 
-    // 3. Bungkus request TextureLoader dalam bentuk Promise
+    // 2. MENGHINDARI BUG BROWSER HP LAMA (Menggunakan cara klasik yang 100% aman)
     const loadPromises = initialUrls.map(url => {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             textureLoader.load(
                 url,
-                (texture) => resolve({ status: 'fulfilled', url }),
+                (texture) => resolve(texture), // Jika berhasil -> lanjutkan
                 undefined,
                 (error) => {
-                    console.error("[Promise] Gagal memuat asset prioritas:", url, error);
-                    reject(error);
+                    console.warn("[Promise] Gagal memuat asset prioritas:", url);
+                    // JIKA GAGAL: Kita TETAP me-resolve promise agar proses tidak crash/terhenti!
+                    resolve(null); 
                 }
             );
         });
     });
 
-    // 4. Eksekusi menggunakan Promise.allSettled()
+    // 3. Eksekusi Load secara pararel
     if (loadPromises.length > 0) {
-        Promise.allSettled(loadPromises).then((results) => {
-            // Evaluasi log masing-masing promise
-            results.forEach(result => {
-                if (result.status === "rejected") {
-                    console.error("❌ Ditemukan tekstur bermasalah oleh allSettled, namun aplikasi tetap dilanjutkan.");
-                }
-            });
-
-            // Loading selesai sebelum 5 detik, batalkan Timeout
-            clearTimeout(fallbackTimer);
-            
-            // Set progress bar jadi penuh
+        Promise.all(loadPromises).then(() => {
             const progBar = document.querySelector('.progress');
             if (progBar) progBar.style.width = '100%';
-            
             startApp();
         });
     } else {
-        clearTimeout(fallbackTimer);
         startApp();
     }
-};
+});
