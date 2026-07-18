@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>XAERISOFT PLANET EXPLORER</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;500;700&family=Space+Grotesk:wght@300;400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Cinematic Loader -->
+    <div id="loader">
+        <div class="loader-content">
+            <h1 class="glow-text">XAERISOFT</h1>
+            <p>menginstall...</p>
+            <div class="progress-bar"><div class="progress"></div></div>
+        </div>
+    </div>
+
+    <!-- WebGL Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- UI Layer -->
+    <div id="ui-layer" class="hidden">
+        <!-- Top Left Brand -->
+        <header class="brand">
+            <h2>XAERISOFT <span>EXPLORLER</span></h2>
+        </header>
+
+        <!-- Right Side Panel (Glassmorphism) -->
+        <aside class="side-panel">
+            <div class="panel-header">
+                <h2 id="planet-name">EARTH</h2>
+                <span id="planet-type" class="badge">Terrestrial Planet</span>
+            </div>
+            
+            <div class="tabs">
+                <button class="tab active" data-target="info">INFO</button>
+                <button class="tab" data-target="facts">FACTS</button>
+                <button class="tab" data-target="compare">COMPARE</button>
+            </div>
+
+            <div class="tab-content active" id="tab-info">
+                <div class="data-grid">
+                    <div class="data-item"><span>Diameter</span><strong id="data-diameter">12,742 km</strong></div>
+                    <div class="data-item"><span>Mass</span><strong id="data-mass">5.97 × 10^24 kg</strong></div>
+                    <div class="data-item"><span>Gravity</span><strong id="data-gravity">9.8 m/s²</strong></div>
+                    <div class="data-item"><span>Temperature</span><strong id="data-temp">15 °C</strong></div>
+                    <div class="data-item"><span>Distance from Sun</span><strong id="data-distance">149.6M km</strong></div>
+                    <div class="data-item"><span>Moons</span><strong id="data-moons">1</strong></div>
+                    <div class="data-item"><span>Rotation Period</span><strong id="data-rotation">24 Hours</strong></div>
+                    <div class="data-item"><span>Orbital Period</span><strong id="data-orbit">365.25 Days</strong></div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-facts">
+                <ul id="fact-list" class="fact-list">
+                    <!-- Injected by JS -->
+                </ul>
+            </div>
+        </aside>
+
+        <!-- Bottom Navigation -->
+        <nav class="bottom-nav">
+            <div class="nav-container">
+                <button class="planet-btn" data-planet="sun" title="Sun">☀</button>
+                <button class="planet-btn" data-planet="mercury" title="Mercury">☿</button>
+                <button class="planet-btn" data-planet="venus" title="Venus">♀</button>
+                <button class="planet-btn active" data-planet="earth" title="Earth">🌍</button>
+                <button class="planet-btn" data-planet="moon" title="Moon">☾</button>
+                <button class="planet-btn" data-planet="mars" title="Mars">♂</button>
+                <button class="planet-btn" data-planet="jupiter" title="Jupiter">♃</button>
+                <button class="planet-btn" data-planet="saturn" title="Saturn">♄</button>
+                <button class="planet-btn" data-planet="uranus" title="Uranus">⛢</button>
+                <button class="planet-btn" data-planet="neptune" title="Neptune">♆</button>
+            </div>
+        </nav>
+    </div>
+
+    <!-- Audio -->
+    <audio id="bgm" loop>
+        <source src="https://assets.codepen.io/1468070/space-ambient.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="sfx-click">
+        <source src="https://assets.codepen.io/1468070/click.wav" type="audio/wav">
+    </audio>
+    <audio id="sfx-warp">
+        <source src="https://assets.codepen.io/1468070/warp.wav" type="audio/wav">
+    </audio>
+
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    
+    <!-- Main Script -->
+    <script src="app.js"></script>
+</body>
+</html>
