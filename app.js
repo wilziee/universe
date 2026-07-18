@@ -134,7 +134,7 @@ scene.add(ambientLight);
 const sunLight = new THREE.DirectionalLight(0xffffff, 1.8);
 sunLight.position.set(10, 5, 10); 
 sunLight.castShadow = true;
-sunLight.shadow.mapSize.width = 1024; // Diturunkan sedikit agar mobile lebih ringan
+sunLight.shadow.mapSize.width = 1024; 
 sunLight.shadow.mapSize.height = 1024;
 scene.add(sunLight);
 
@@ -153,9 +153,20 @@ function createStarField() {
     return stars;
 }
 const starField = createStarField();
+// --- 6. ADVANCED PLANET GENERATOR & SMART LOADING MANAGER ---
+const loadingManager = new THREE.LoadingManager();
 
-// --- 6. ADVANCED PLANET GENERATOR ---
-const textureLoader = new THREE.TextureLoader();
+loadingManager.onProgress = function (url, itemsLoaded, itemsTotal) {
+    const progress = (itemsLoaded / itemsTotal) * 100;
+    const progBar = document.querySelector('.progress');
+    if(progBar) progBar.style.width = progress + '%';
+};
+
+loadingManager.onError = function (url) {
+    console.error("[LoadingManager] Gagal memuat asset secara global:", url);
+};
+
+const textureLoader = new THREE.TextureLoader(loadingManager);
 let currentPlanetGroup = new THREE.Group();
 scene.add(currentPlanetGroup);
 
@@ -174,9 +185,18 @@ const fallbackTexture = createProceduralNoise();
 
 function safeLoad(url) {
     if(!url) return fallbackTexture;
-    return textureLoader.load(url, undefined, undefined, () => {
-        console.warn("Gagal memuat tekstur:", url);
-    });
+    const texture = textureLoader.load(
+        url,
+        undefined, 
+        undefined, 
+        (error) => { 
+            console.error("[TextureLoader] Gagal memuat tekstur:", url, error);
+            // Terapkan Fallback Texture agar Material Three.js tidak macet
+            texture.image = fallbackTexture.image;
+            texture.needsUpdate = true;
+        }
+    );
+    return texture;
 }
 
 const atmosphereVertexShader = `
@@ -203,7 +223,7 @@ function buildPlanet(planetKey) {
     const meshesToAnimate = [];
     const data = planetsData[planetKey] || { ...fallbackData, name: planetKey.toUpperCase() };
     const radius = 1;
-    const geo = new THREE.SphereGeometry(radius, 64, 64); // Dioptimalkan untuk mobile
+    const geo = new THREE.SphereGeometry(radius, 64, 64); 
     
     // 1. BASE PLANET MESH
     if (planetKey === 'sun') {
@@ -289,134 +309,159 @@ function buildPlanet(planetKey) {
     currentPlanetGroup.userData.animations = meshesToAnimate;
     updateUI(data);
 }
+// --- 6. ADVANCED PLANET GENERATOR & SMART LOADING MANAGER ---
+const loadingManager = new THREE.LoadingManager();
 
-// --- 7. UI & INTERACTION ---
-function updateUI(data) {
-    document.getElementById('planet-name').innerText = data.name;
-    document.getElementById('planet-type').innerText = data.type || "Celestial Body";
-    document.getElementById('data-diameter').innerText = data.diameter;
-    document.getElementById('data-mass').innerText = data.mass;
-    document.getElementById('data-gravity').innerText = data.gravity;
-    document.getElementById('data-temp').innerText = data.temp;
-    document.getElementById('data-distance').innerText = data.distance;
-    document.getElementById('data-moons').innerText = data.moons;
-    document.getElementById('data-rotation').innerText = data.rotation;
-    document.getElementById('data-orbit').innerText = data.orbit;
-
-    const factList = document.getElementById('fact-list');
-    factList.innerHTML = '';
-    data.facts.forEach(fact => {
-        const li = document.createElement('li'); li.innerText = fact; factList.appendChild(li);
-    });
-}
-
-const sfxClick = document.getElementById('sfx-click');
-const sfxWarp = document.getElementById('sfx-warp');
-const bgm = document.getElementById('bgm');
-
-document.querySelectorAll('.planet-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-        document.querySelectorAll('.planet-btn').forEach(b => b.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-
-        if(sfxClick){ sfxClick.currentTime = 0; sfxClick.play().catch(()=>{}); }
-        if(sfxWarp){ sfxWarp.currentTime = 0; sfxWarp.play().catch(()=>{}); }
-
-        const planetId = e.currentTarget.getAttribute('data-planet');
-        
-        if (typeof gsap !== 'undefined') {
-            gsap.to(camera, { fov: 100, duration: 0.8, ease: "power2.in", onUpdate: () => camera.updateProjectionMatrix() });
-            gsap.to(currentPlanetGroup.scale, {
-                x: 0.01, y: 0.01, z: 0.01, duration: 0.8, ease: "power2.in",
-                onComplete: () => {
-                    buildPlanet(planetId);
-                    currentPlanetGroup.scale.set(0.01, 0.01, 0.01);
-                    gsap.to(currentPlanetGroup.scale, { x: 1, y: 1, z: 1, duration: 1.2, ease: "back.out(1.2)" });
-                    gsap.to(camera, { fov: 45, duration: 1.2, ease: "power3.out", onUpdate: () => camera.updateProjectionMatrix() });
-                }
-            });
-        } else {
-            buildPlanet(planetId);
-        }
-    });
-});
-
-document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', (e) => {
-        if(sfxClick){ sfxClick.currentTime = 0; sfxClick.play().catch(()=>{}); }
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-        document.getElementById(`tab-${e.currentTarget.getAttribute('data-target')}`).classList.add('active');
-    });
-});
-
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    if(useComposer) composer.setSize(window.innerWidth, window.innerHeight);
-});
-
-// --- 8. RENDER LOOP ---
-const clock = new THREE.Clock();
-
-function animate() {
-    requestAnimationFrame(animate);
-    const elapsedTime = clock.getElapsedTime();
-
-    if(currentPlanetGroup && currentPlanetGroup.userData.animations) {
-        currentPlanetGroup.userData.animations.forEach(anim => {
-            if(anim.speedY) anim.mesh.rotation.y += anim.speedY;
-            if(anim.speedX) anim.mesh.rotation.x += anim.speedX;
-            if(anim.speedZ) anim.mesh.rotation.z += anim.speedZ;
-        });
-    }
-
-    starField.rotation.y = elapsedTime * 0.015;
-    camera.position.x += Math.sin(elapsedTime * 0.5) * 0.0005;
-    camera.position.y += Math.cos(elapsedTime * 0.3) * 0.0005;
-
-    controls.update();
-
-    if(useComposer) {
-        composer.render(); 
-    } else {
-        renderer.render(scene, camera);
-    }
-}
-
-// --- 9. FIX: SMART LOADING SEQUENCE UNTUK MOBILE ---
-document.addEventListener("DOMContentLoaded", () => {
-    let progress = 0;
+loadingManager.onProgress = function (url, itemsLoaded, itemsTotal) {
+    const progress = (itemsLoaded / itemsTotal) * 100;
     const progBar = document.querySelector('.progress');
-    
-    // Interval jalan segera setelah struktur HTML terbaca (tanpa menunggu audio lambat)
-    const interval = setInterval(() => {
-        progress += Math.random() * 25; 
-        if(progress >= 100) {
-            progress = 100;
-            clearInterval(interval);
-            setTimeout(() => {
-                document.getElementById('loader').style.opacity = '0';
-                setTimeout(() => {
-                    document.getElementById('loader').style.display = 'none';
-                    document.getElementById('ui-layer').classList.remove('hidden');
-                    
-                    if(bgm) {
-                        bgm.volume = 0.3;
-                        // Audio dicegah auto-play oleh chrome mobile. Tangkap errornya dengan diam-diam.
-                        bgm.play().catch(() => console.log("Menunggu interaksi awal untuk audio."));
-                    }
+    if(progBar) progBar.style.width = progress + '%';
+};
 
-                    buildPlanet('earth'); 
-                    currentPlanetGroup.scale.set(0.01, 0.01, 0.01);
-                    
-                    if(typeof gsap !== 'undefined') {
-                        gsap.to(currentPlanetGroup.scale, { x: 1, y: 1, z: 1, duration: 2, ease: "power3.out" });
-                    }
-                    animate();
-                }, 1000);
-            }, 300);
+loadingManager.onError = function (url) {
+    console.error("[LoadingManager] Gagal memuat asset secara global:", url);
+};
+
+const textureLoader = new THREE.TextureLoader(loadingManager);
+let currentPlanetGroup = new THREE.Group();
+scene.add(currentPlanetGroup);
+
+function createProceduralNoise() {
+    const cvs = document.createElement('canvas'); cvs.width = 256; cvs.height = 256;
+    const ctx = cvs.getContext('2d');
+    for(let x=0; x<256; x+=4) {
+        for(let y=0; y<256; y+=4) {
+            const v = Math.floor(Math.random() * 80) + 100;
+            ctx.fillStyle = `rgb(${v}, ${v}, ${v})`; ctx.fillRect(x,y,4,4);
         }
-     
+    }
+    return new THREE.CanvasTexture(cvs);
+}
+const fallbackTexture = createProceduralNoise();
+
+function safeLoad(url) {
+    if(!url) return fallbackTexture;
+    const texture = textureLoader.load(
+        url,
+        undefined, 
+        undefined, 
+        (error) => { 
+            console.error("[TextureLoader] Gagal memuat tekstur:", url, error);
+            // Terapkan Fallback Texture agar Material Three.js tidak macet
+            texture.image = fallbackTexture.image;
+            texture.needsUpdate = true;
+        }
+    );
+    return texture;
+}
+
+const atmosphereVertexShader = `
+    varying vec3 vNormal;
+    void main() {
+        vNormal = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+`;
+const atmosphereFragmentShader = `
+    varying vec3 vNormal;
+    uniform vec3 glowColor;
+    uniform float power;
+    void main() {
+        float intensity = pow(0.65 - dot(vNormal, vec3(0, 0, 1.0)), power);
+        gl_FragColor = vec4(glowColor, 1.0) * intensity * 1.5;
+    }
+`;
+
+function buildPlanet(planetKey) {
+    while(currentPlanetGroup.children.length > 0){ 
+        currentPlanetGroup.remove(currentPlanetGroup.children[0]); 
+    }
+    const meshesToAnimate = [];
+    const data = planetsData[planetKey] || { ...fallbackData, name: planetKey.toUpperCase() };
+    const radius = 1;
+    const geo = new THREE.SphereGeometry(radius, 64, 64); 
+    
+    // 1. BASE PLANET MESH
+    if (planetKey === 'sun') {
+        const sunMat = new THREE.MeshStandardMaterial({
+            map: safeLoad(data.map), emissive: new THREE.Color(data.emissive), emissiveMap: safeLoad(data.map),
+            emissiveIntensity: 1.5, roughness: 1.0
+        });
+        const baseMesh = new THREE.Mesh(geo, sunMat);
+        currentPlanetGroup.add(baseMesh);
+        meshesToAnimate.push({ mesh: baseMesh, speedY: 0.001 });
+
+        const plasmaMat = new THREE.MeshStandardMaterial({
+            map: safeLoad(data.map), emissive: new THREE.Color(0xff8800), emissiveIntensity: 2.0,
+            blending: THREE.AdditiveBlending, transparent: true, opacity: 0.6, depthWrite: false
+        });
+        const plasmaMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.015, 64, 64), plasmaMat);
+        currentPlanetGroup.add(plasmaMesh);
+        meshesToAnimate.push({ mesh: plasmaMesh, speedY: -0.0015, speedX: 0.0005 });
+
+        const coreLight = new THREE.PointLight(0xffccaa, 2, 50);
+        currentPlanetGroup.add(coreLight);
+    } 
+    else {
+        const matParams = { map: safeLoad(data.map), roughness: data.roughness || 0.7, metalness: 0.05 };
+        if(data.normal) matParams.normalMap = safeLoad(data.normal);
+        else if(data.useBump) { matParams.bumpMap = safeLoad(data.map); matParams.bumpScale = 0.015; }
+        if(data.specular) matParams.specularMap = safeLoad(data.specular);
+
+        if(data.nightMap) {
+            matParams.emissiveMap = safeLoad(data.nightMap);
+            matParams.emissive = new THREE.Color(0xffffee);
+            matParams.emissiveIntensity = 1.0; 
+        }
+
+        const baseMesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial(matParams));
+        baseMesh.castShadow = true; baseMesh.receiveShadow = true;
+        currentPlanetGroup.add(baseMesh);
+        meshesToAnimate.push({ mesh: baseMesh, speedY: 0.001 });
+    }
+
+    // 2. CLOUDS / GAS
+    if(data.clouds) {
+        const cloudMat = new THREE.MeshStandardMaterial({
+            map: safeLoad(data.clouds), transparent: true, opacity: data.cloudOpacity || 0.5, 
+            blending: data.isGas ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false
+        });
+        const cloudMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.01, 64, 64), cloudMat);
+        cloudMesh.receiveShadow = true;
+        currentPlanetGroup.add(cloudMesh);
+        meshesToAnimate.push({ mesh: cloudMesh, speedY: 0.0013 });
+    }
+
+    // 3. RINGS
+    if(data.ring) {
+        const ringGeo = new THREE.RingGeometry(1.4, 2.4, 64);
+        const pos = ringGeo.attributes.position;
+        const uvs = ringGeo.attributes.uv;
+        for (let i = 0; i < pos.count; i++) {
+            const x = pos.getX(i), y = pos.getY(i);
+            const r = Math.sqrt(x*x + y*y);
+            uvs.setXY(i, (r - 1.4) / (2.4 - 1.4), 0.5);
+        }
+        const ringMat = new THREE.MeshStandardMaterial({
+            map: safeLoad(data.ring), color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.95, roughness: 0.6
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.rotation.x = Math.PI / 2 + 0.15;
+        ringMesh.castShadow = true; ringMesh.receiveShadow = true;
+        currentPlanetGroup.add(ringMesh);
+        meshesToAnimate.push({ mesh: ringMesh, speedZ: 0.0005 });
+    }
+
+    // 4. ATMOSPHERE GLOW
+    const atmosScale = (planetKey === 'sun') ? 1.3 : (data.ring ? 1.05 : 1.15);
+    const atmosMat = new THREE.ShaderMaterial({
+        vertexShader: atmosphereVertexShader, fragmentShader: atmosphereFragmentShader,
+        uniforms: { glowColor: { value: data.atmosphereColor || new THREE.Color(0x00F0FF) }, power: { value: data.power || 3.0 } },
+        blending: THREE.AdditiveBlending, side: THREE.BackSide, transparent: true, depthWrite: false
+    });
+    const atmosMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * atmosScale, 64, 64), atmosMat);
+    currentPlanetGroup.add(atmosMesh);
+
+    currentPlanetGroup.userData.animations = meshesToAnimate;
+    updateUI(data);
+}
