@@ -1,0 +1,42 @@
+{
+    "earth": {
+        "name": "Earth",
+        "type": "Terrestrial Planet",
+        "mission_source": "NASA Blue Marble / Landsat",
+        "is_artist_impression": false,
+        "radius": "6,371 km",
+        "gravity": "9.8 m/s²",
+        "travel_rocket": "0",
+        "travel_light": "0"
+    },
+    "moon": {
+        "name": "Moon",
+        "type": "Natural Satellite",
+        "mission_source": "NASA Lunar Reconnaissance Orbiter",
+        "is_artist_impression": false,
+        "radius": "1,737 km",
+        "gravity": "1.62 m/s²",
+        "travel_rocket": "3 Days",
+        "travel_light": "1.3 Seconds"
+    },
+    "mars": {
+        "name": "Mars",
+        "type": "Terrestrial Planet",
+        "mission_source": "NASA MRO / MOLA",
+        "is_artist_impression": false,
+        "radius": "3,389 km",
+        "gravity": "3.71 m/s²",
+        "travel_rocket": "7 Months",
+        "travel_light": "3.1 Minutes"
+    },
+    "trappist_1e": {
+        "name": "TRAPPIST-1e",
+        "type": "Exoplanet",
+        "mission_source": "Spitzer Space Telescope (Light Curve)",
+        "is_artist_impression": true,
+        "radius": "5,800 km (Est)",
+        "gravity": "9.1 m/s² (Est)",
+        "travel_rocket": "11.2 M Years",
+        "travel_light": "40 Years"
+    }
+}
