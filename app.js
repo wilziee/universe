@@ -3,7 +3,6 @@
 // ==========================================
 
 // --- 1. DATA PLANET & HIGH-RES TEXTURES ---
-// Menggunakan CDN resmi, stabil, dan bebas CORS
 const CDN = "https://cdn.jsdelivr.net/gh/brian3kb/grapefruit-3d-solar-system@master/src/assets/textures/";
 const MRDOOB = "https://cdn.jsdelivr.net/gh/mrdoob/three.js@master/examples/textures/planets/";
 const GLOBE = "https://unpkg.com/three-globe/example/img/";
@@ -82,7 +81,7 @@ const planetsData = {
     }
 };
 
-const fallbackData = { diameter: "TBA", mass: "TBA", gravity: "TBA", temp: "TBA", distance: "TBA", moons: "TBA", rotation: "TBA", orbit: "TBA", facts: ["Data sedang dienkripsi."], map: '', atmosphereColor: new THREE.Color(0xffffff) };
+const fallbackData = { diameter: "TBA", mass: "TBA", gravity: "TBA", temp: "TBA", distance: "TBA", moons: "TBA", rotation: "TBA", orbit: "TBA", facts: ["Data sedang memuat."], map: '', atmosphereColor: new THREE.Color(0xffffff) };
 
 // --- 2. THREE.JS SETUP & CAMERA ---
 const container = document.getElementById('canvas-container');
@@ -90,7 +89,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x020205);
 
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 0, 3.0); // Diperdekat agar memakan 70-80% layar
+camera.position.set(0, 0, 3.0); 
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -108,32 +107,41 @@ controls.maxDistance = 8;
 controls.zoomSpeed = 0.8;
 controls.rotateSpeed = 0.6;
 
-// --- 3. POST-PROCESSING (BLOOM & GLOW) ---
-const renderScene = new THREE.RenderPass(scene, camera);
-const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.2, 0.5, 0.85);
-bloomPass.threshold = 0.05;
-bloomPass.strength = 1.0;
-bloomPass.radius = 0.6;
+// --- 3. POST-PROCESSING (SAFE GUARD UNTUK MOBILE) ---
+let composer;
+let useComposer = false;
 
-const composer = new THREE.EffectComposer(renderer);
-composer.addPass(renderScene);
-composer.addPass(bloomPass);
+try {
+    const renderScene = new THREE.RenderPass(scene, camera);
+    const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.2, 0.5, 0.85);
+    bloomPass.threshold = 0.05;
+    bloomPass.strength = 1.0;
+    bloomPass.radius = 0.6;
+
+    composer = new THREE.EffectComposer(renderer);
+    composer.addPass(renderScene);
+    composer.addPass(bloomPass);
+    useComposer = true;
+} catch (error) {
+    console.warn("GPU Mobile tidak mendukung efek Bloom yang berat. Beralih ke Standard Render.", error);
+    useComposer = false;
+}
 
 // --- 4. LIGHTING ---
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.03); // Gelap agar night-light & bayangan realistis
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.03);
 scene.add(ambientLight);
 
 const sunLight = new THREE.DirectionalLight(0xffffff, 1.8);
 sunLight.position.set(10, 5, 10); 
 sunLight.castShadow = true;
-sunLight.shadow.mapSize.width = 2048;
-sunLight.shadow.mapSize.height = 2048;
+sunLight.shadow.mapSize.width = 1024; // Diturunkan sedikit agar mobile lebih ringan
+sunLight.shadow.mapSize.height = 1024;
 scene.add(sunLight);
 
-// --- 5. ENVIRONMENT (STARS & DUST) ---
+// --- 5. ENVIRONMENT (STARS) ---
 function createStarField() {
     const starGeo = new THREE.BufferGeometry();
-    const starCount = 8000;
+    const starCount = 6000;
     const starPos = new Float32Array(starCount * 3);
     for(let i=0; i < starCount * 3; i++) {
         starPos[i] = (Math.random() - 0.5) * 200;
@@ -151,12 +159,11 @@ const textureLoader = new THREE.TextureLoader();
 let currentPlanetGroup = new THREE.Group();
 scene.add(currentPlanetGroup);
 
-// Fallback Procedural Noise Texture generator jika network gagal
 function createProceduralNoise() {
-    const cvs = document.createElement('canvas'); cvs.width = 512; cvs.height = 512;
+    const cvs = document.createElement('canvas'); cvs.width = 256; cvs.height = 256;
     const ctx = cvs.getContext('2d');
-    for(let x=0; x<512; x+=4) {
-        for(let y=0; y<512; y+=4) {
+    for(let x=0; x<256; x+=4) {
+        for(let y=0; y<256; y+=4) {
             const v = Math.floor(Math.random() * 80) + 100;
             ctx.fillStyle = `rgb(${v}, ${v}, ${v})`; ctx.fillRect(x,y,4,4);
         }
@@ -167,7 +174,9 @@ const fallbackTexture = createProceduralNoise();
 
 function safeLoad(url) {
     if(!url) return fallbackTexture;
-    return textureLoader.load(url, undefined, undefined, () => fallbackTexture);
+    return textureLoader.load(url, undefined, undefined, () => {
+        console.warn("Gagal memuat tekstur:", url);
+    });
 }
 
 const atmosphereVertexShader = `
@@ -194,46 +203,35 @@ function buildPlanet(planetKey) {
     const meshesToAnimate = [];
     const data = planetsData[planetKey] || { ...fallbackData, name: planetKey.toUpperCase() };
     const radius = 1;
-    const geo = new THREE.SphereGeometry(radius, 128, 128); // Resolusi tinggi
+    const geo = new THREE.SphereGeometry(radius, 64, 64); // Dioptimalkan untuk mobile
     
     // 1. BASE PLANET MESH
     if (planetKey === 'sun') {
         const sunMat = new THREE.MeshStandardMaterial({
-            map: safeLoad(data.map),
-            emissive: new THREE.Color(data.emissive),
-            emissiveMap: safeLoad(data.map),
-            emissiveIntensity: 1.5,
-            roughness: 1.0
+            map: safeLoad(data.map), emissive: new THREE.Color(data.emissive), emissiveMap: safeLoad(data.map),
+            emissiveIntensity: 1.5, roughness: 1.0
         });
         const baseMesh = new THREE.Mesh(geo, sunMat);
         currentPlanetGroup.add(baseMesh);
         meshesToAnimate.push({ mesh: baseMesh, speedY: 0.001 });
 
-        // Corona / Plasma Layer
         const plasmaMat = new THREE.MeshStandardMaterial({
             map: safeLoad(data.map), emissive: new THREE.Color(0xff8800), emissiveIntensity: 2.0,
             blending: THREE.AdditiveBlending, transparent: true, opacity: 0.6, depthWrite: false
         });
         const plasmaMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.015, 64, 64), plasmaMat);
         currentPlanetGroup.add(plasmaMesh);
-        meshesToAnimate.push({ mesh: plasmaMesh, speedY: -0.0015, speedX: 0.0005 }); // Animated plasma
+        meshesToAnimate.push({ mesh: plasmaMesh, speedY: -0.0015, speedX: 0.0005 });
 
-        // Cahaya pusat agar Sun menerangi sekitarnya
         const coreLight = new THREE.PointLight(0xffccaa, 2, 50);
         currentPlanetGroup.add(coreLight);
     } 
     else {
-        const matParams = { 
-            map: safeLoad(data.map), 
-            roughness: data.roughness || 0.7, 
-            metalness: 0.05 
-        };
-
+        const matParams = { map: safeLoad(data.map), roughness: data.roughness || 0.7, metalness: 0.05 };
         if(data.normal) matParams.normalMap = safeLoad(data.normal);
         else if(data.useBump) { matParams.bumpMap = safeLoad(data.map); matParams.bumpScale = 0.015; }
         if(data.specular) matParams.specularMap = safeLoad(data.specular);
 
-        // Earth Night Lights
         if(data.nightMap) {
             matParams.emissiveMap = safeLoad(data.nightMap);
             matParams.emissive = new THREE.Color(0xffffee);
@@ -246,54 +244,45 @@ function buildPlanet(planetKey) {
         meshesToAnimate.push({ mesh: baseMesh, speedY: 0.001 });
     }
 
-    // 2. CLOUDS / GAS LAYERS
+    // 2. CLOUDS / GAS
     if(data.clouds) {
         const cloudMat = new THREE.MeshStandardMaterial({
-            map: safeLoad(data.clouds),
-            transparent: true, opacity: data.cloudOpacity || 0.5, 
-            blending: data.isGas ? THREE.NormalBlending : THREE.AdditiveBlending, 
-            depthWrite: false
+            map: safeLoad(data.clouds), transparent: true, opacity: data.cloudOpacity || 0.5, 
+            blending: data.isGas ? THREE.NormalBlending : THREE.AdditiveBlending, depthWrite: false
         });
         const cloudMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.01, 64, 64), cloudMat);
         cloudMesh.receiveShadow = true;
         currentPlanetGroup.add(cloudMesh);
-        meshesToAnimate.push({ mesh: cloudMesh, speedY: 0.0013 }); // Putaran awan sedikit lebih cepat
+        meshesToAnimate.push({ mesh: cloudMesh, speedY: 0.0013 });
     }
 
-    // 3. HIGH-RES RINGS (Saturn / Uranus)
+    // 3. RINGS
     if(data.ring) {
-        const ringGeo = new THREE.RingGeometry(1.4, 2.4, 128);
+        const ringGeo = new THREE.RingGeometry(1.4, 2.4, 64);
         const pos = ringGeo.attributes.position;
         const uvs = ringGeo.attributes.uv;
-        // Koreksi Pemetaan UV Radial untuk tekstur cincin 1D
         for (let i = 0; i < pos.count; i++) {
             const x = pos.getX(i), y = pos.getY(i);
             const r = Math.sqrt(x*x + y*y);
             uvs.setXY(i, (r - 1.4) / (2.4 - 1.4), 0.5);
         }
         const ringMat = new THREE.MeshStandardMaterial({
-            map: safeLoad(data.ring), color: 0xffffff, side: THREE.DoubleSide,
-            transparent: true, opacity: 0.95, roughness: 0.6
+            map: safeLoad(data.ring), color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.95, roughness: 0.6
         });
         const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-        ringMesh.rotation.x = Math.PI / 2 + 0.15; // Miring realistis
+        ringMesh.rotation.x = Math.PI / 2 + 0.15;
         ringMesh.castShadow = true; ringMesh.receiveShadow = true;
         currentPlanetGroup.add(ringMesh);
         meshesToAnimate.push({ mesh: ringMesh, speedZ: 0.0005 });
     }
 
-    // 4. ATMOSPHERE GLOW SHADER (Semua planet mendapatkan ini)
+    // 4. ATMOSPHERE GLOW
     const atmosScale = (planetKey === 'sun') ? 1.3 : (data.ring ? 1.05 : 1.15);
     const atmosMat = new THREE.ShaderMaterial({
-        vertexShader: atmosphereVertexShader,
-        fragmentShader: atmosphereFragmentShader,
-        uniforms: {
-            glowColor: { value: data.atmosphereColor || new THREE.Color(0x00F0FF) },
-            power: { value: data.power || 3.0 }
-        },
+        vertexShader: atmosphereVertexShader, fragmentShader: atmosphereFragmentShader,
+        uniforms: { glowColor: { value: data.atmosphereColor || new THREE.Color(0x00F0FF) }, power: { value: data.power || 3.0 } },
         blending: THREE.AdditiveBlending, side: THREE.BackSide, transparent: true, depthWrite: false
     });
-    
     const atmosMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * atmosScale, 64, 64), atmosMat);
     currentPlanetGroup.add(atmosMesh);
 
@@ -301,7 +290,7 @@ function buildPlanet(planetKey) {
     updateUI(data);
 }
 
-// --- 7. UI & HYPER-WARP INTERACTION ---
+// --- 7. UI & INTERACTION ---
 function updateUI(data) {
     document.getElementById('planet-name').innerText = data.name;
     document.getElementById('planet-type').innerText = data.type || "Celestial Body";
@@ -330,28 +319,31 @@ document.querySelectorAll('.planet-btn').forEach(btn => {
         document.querySelectorAll('.planet-btn').forEach(b => b.classList.remove('active'));
         e.currentTarget.classList.add('active');
 
-        sfxClick.currentTime = 0; sfxClick.play().catch(()=>{});
-        sfxWarp.currentTime = 0; sfxWarp.play().catch(()=>{});
+        if(sfxClick){ sfxClick.currentTime = 0; sfxClick.play().catch(()=>{}); }
+        if(sfxWarp){ sfxWarp.currentTime = 0; sfxWarp.play().catch(()=>{}); }
 
         const planetId = e.currentTarget.getAttribute('data-planet');
         
-        // Motion Blur & Warp Transition Effect
-        gsap.to(camera, { fov: 100, duration: 0.8, ease: "power2.in", onUpdate: () => camera.updateProjectionMatrix() });
-        gsap.to(currentPlanetGroup.scale, {
-            x: 0.01, y: 0.01, z: 0.01, duration: 0.8, ease: "power2.in",
-            onComplete: () => {
-                buildPlanet(planetId);
-                currentPlanetGroup.scale.set(0.01, 0.01, 0.01);
-                gsap.to(currentPlanetGroup.scale, { x: 1, y: 1, z: 1, duration: 1.2, ease: "back.out(1.2)" });
-                gsap.to(camera, { fov: 45, duration: 1.2, ease: "power3.out", onUpdate: () => camera.updateProjectionMatrix() });
-            }
-        });
+        if (typeof gsap !== 'undefined') {
+            gsap.to(camera, { fov: 100, duration: 0.8, ease: "power2.in", onUpdate: () => camera.updateProjectionMatrix() });
+            gsap.to(currentPlanetGroup.scale, {
+                x: 0.01, y: 0.01, z: 0.01, duration: 0.8, ease: "power2.in",
+                onComplete: () => {
+                    buildPlanet(planetId);
+                    currentPlanetGroup.scale.set(0.01, 0.01, 0.01);
+                    gsap.to(currentPlanetGroup.scale, { x: 1, y: 1, z: 1, duration: 1.2, ease: "back.out(1.2)" });
+                    gsap.to(camera, { fov: 45, duration: 1.2, ease: "power3.out", onUpdate: () => camera.updateProjectionMatrix() });
+                }
+            });
+        } else {
+            buildPlanet(planetId);
+        }
     });
 });
 
 document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', (e) => {
-        sfxClick.currentTime = 0; sfxClick.play().catch(()=>{});
+        if(sfxClick){ sfxClick.currentTime = 0; sfxClick.play().catch(()=>{}); }
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
         e.currentTarget.classList.add('active');
@@ -359,16 +351,11 @@ document.querySelectorAll('.tab').forEach(tab => {
     });
 });
 
-window.addEventListener('dblclick', () => {
-    gsap.to(camera.position, { x: 0, y: 0, z: 3.0, duration: 1, ease: "power2.out" });
-    gsap.to(controls.target, { x: 0, y: 0, z: 0, duration: 1, ease: "power2.out" });
-});
-
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    composer.setSize(window.innerWidth, window.innerHeight);
+    if(useComposer) composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // --- 8. RENDER LOOP ---
@@ -387,20 +374,26 @@ function animate() {
     }
 
     starField.rotation.y = elapsedTime * 0.015;
-
     camera.position.x += Math.sin(elapsedTime * 0.5) * 0.0005;
     camera.position.y += Math.cos(elapsedTime * 0.3) * 0.0005;
 
     controls.update();
-    composer.render(); 
+
+    if(useComposer) {
+        composer.render(); 
+    } else {
+        renderer.render(scene, camera);
+    }
 }
 
-// --- 9. INIT LOADING SEQUENCE ---
-window.onload = () => {
+// --- 9. FIX: SMART LOADING SEQUENCE UNTUK MOBILE ---
+document.addEventListener("DOMContentLoaded", () => {
     let progress = 0;
     const progBar = document.querySelector('.progress');
+    
+    // Interval jalan segera setelah struktur HTML terbaca (tanpa menunggu audio lambat)
     const interval = setInterval(() => {
-        progress += Math.random() * 15;
+        progress += Math.random() * 25; 
         if(progress >= 100) {
             progress = 100;
             clearInterval(interval);
@@ -409,15 +402,21 @@ window.onload = () => {
                 setTimeout(() => {
                     document.getElementById('loader').style.display = 'none';
                     document.getElementById('ui-layer').classList.remove('hidden');
-                    bgm.volume = 0.3;
-                    bgm.play().catch(() => console.log("User must interact first to play BGM"));
+                    
+                    if(bgm) {
+                        bgm.volume = 0.3;
+                        // Audio dicegah auto-play oleh chrome mobile. Tangkap errornya dengan diam-diam.
+                        bgm.play().catch(() => console.log("Menunggu interaksi awal untuk audio."));
+                    }
+
                     buildPlanet('earth'); 
-                    // Initial Setup Scale
                     currentPlanetGroup.scale.set(0.01, 0.01, 0.01);
-                    gsap.to(currentPlanetGroup.scale, { x: 1, y: 1, z: 1, duration: 2, ease: "power3.out" });
+                    
+                    if(typeof gsap !== 'undefined') {
+                        gsap.to(currentPlanetGroup.scale, { x: 1, y: 1, z: 1, duration: 2, ease: "power3.out" });
+                    }
                     animate();
-                }, 1500);
-            }, 500);
+                }, 1000);
+            }, 300);
         }
-        progBar.style.width = `${progress}%`;
-    }, 200); 
+     
